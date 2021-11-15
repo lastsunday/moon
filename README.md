@@ -15,7 +15,7 @@ Project moon(追月计划)致力于提供快速开发的解决方案。
 2. **[moon-service](https://github.com/lastsunday/moon-service)** - 提供restful api服务
 3. **[moon-client-admin](https://github.com/lastsunday/moon-client-admin)** - 后台管理前端
 4. **[moon-client-app](https://github.com/lastsunday/moon-client-app)** - 前端应用（例如POS前端）
-5. **[moon-client-mini-app](https://github.com/lastsunday/moon-client-mini-app)** - 小程序前端（例如微信小程序商城）
+5. **[moon-client-mini-app](https://github.com/lastsunday/moon-client-app-uniapp)** - 小程序前端（例如微信小程序商城）
 
 ## 起步
 
