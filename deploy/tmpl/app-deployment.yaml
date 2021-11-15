@@ -1,0 +1,182 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: $CI_PROJECT_PATH_SLUG
+  labels:
+    app: $CI_PROJECT_PATH_SLUG
+  annotations:
+    app.gitlab.com/app: $CI_PROJECT_PATH_SLUG
+    app.gitlab.com/env: $CI_ENVIRONMENT_SLUG
+spec:
+  selector:
+    matchLabels:
+      app: $CI_PROJECT_PATH_SLUG
+  template:
+    metadata:
+      labels:
+        app: $CI_PROJECT_PATH_SLUG
+    spec:
+      containers:
+        - name: $CI_PROJECT_PATH_SLUG
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+          image: "$CI_REGISTRY_IMAGE:latest"
+          imagePullPolicy: Always
+          volumeMounts:
+            - mountPath: /usr/local/app/conf/application.properties
+              name: volume-conf
+              readOnly: true
+              subPath: application.properties
+      imagePullSecrets:
+        - name: $CI_PROJECT_PATH_SLUG-docker-config
+      restartPolicy: Always
+      initContainers: []
+      volumes:
+        - configMap:
+            items:
+              - key: application.properties
+                path: application.properties
+            name: $CI_PROJECT_PATH_SLUG-conf
+          name: volume-conf
+  minReadySeconds: 0
+  progressDeadlineSeconds: 10
+  replicas: 1
+  revisionHistoryLimit: 0
+  strategy:
+    type: Recreate
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: $CI_PROJECT_PATH_SLUG-service
+  annotations:
+    app.gitlab.com/app: $CI_PROJECT_PATH_SLUG
+    app.gitlab.com/env: $CI_ENVIRONMENT_SLUG
+spec:
+  selector:
+    app: $CI_PROJECT_PATH_SLUG
+  ports:
+  # Default port used by the image
+  - port: 9211
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: $CI_PROJECT_PATH_SLUG-ingress
+  annotations:
+    app.gitlab.com/app: $CI_PROJECT_PATH_SLUG
+    app.gitlab.com/env: $CI_ENVIRONMENT_SLUG
+spec:
+  rules:
+  - http:
+      paths:
+      - pathType: Prefix
+        path: "/$CI_PROJECT_PATH_SLUG"
+        backend:
+          service:
+            name: $CI_PROJECT_PATH_SLUG-service
+            port:
+              number: 9211
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: $CI_PROJECT_PATH_SLUG-docker-config
+data:
+  .dockerconfigjson: $DOCKER_CONFIG_JSON
+type: kubernetes.io/dockerconfigjson
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  annotations:
+    app.gitlab.com/app: $CI_PROJECT_PATH_SLUG
+    app.gitlab.com/env: $CI_ENVIRONMENT_SLUG
+  labels:
+    app: $CI_PROJECT_PATH_SLUG
+  name: $CI_PROJECT_PATH_SLUG-conf
+data:
+  application.properties: |
+    ########################################################
+    ###spring boot 配置
+    ########################################################
+    server.port=9211
+    server.servlet.context-path=/$CI_PROJECT_PATH_SLUG
+    spring.jackson.date-format=yyyy-MM-dd'T'HH:mm:ss.SSSX
+    spring.servlet.multipart.max-file-size=10MB
+    spring.servlet.multipart.max-request-size=100MB
+    spring.jmx.unique-names=true
+    spring.jackson.date-format=yyyy-MM-dd'T'HH:mm:ss.SSSX
+    ########################################################
+    ##日志配置
+    ########################################################
+    logging.file.name=log/app.log
+    logging.level.root=info
+    #是否在程序启动时清理日志备份文件，默认值为：false
+    logging.logback.rollingpolicy.clean-history-on-start=true
+    #日志文件名格式，默认值为：${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz
+    #logging.logback.rollingpolicy.file-name-pattern=${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz
+    #单个日志文件最大尺寸,默认值为：10MB
+    logging.logback.rollingpolicy.max-file-size=10MB
+    #日志最大保留天数，默认值为：7
+    logging.logback.rollingpolicy.max-history=60
+    #日志备份文件总容量限制，默认值为：0B，0B为不限制
+    #logging.logback.rollingpolicy.total-size-cap=0B
+    ########################################################
+    ###app 配置
+    ########################################################
+    #是否开启swagger，默认值：false
+    #app.swagger.enable=false
+    #Web根路径默认跳转路径，默认值为：/app
+    #app.web.root.redirect=/app
+    #是否允许从Web访问app前端，默认值为：true
+    #app.web.app.enable=true
+    #是否允许从Web访问miniApp前端，默认值为：true
+    #app.web.miniApp.enable=true
+    #是否允许从Web访问admin前端，默认值为：true
+    #app.web.admin.enable=true
+    #是否允许从Web访问repository目录，默认值为：true
+    #app.web.repository.enable=true
+    #是否在Service response中显示错误详情，默认值：false
+    #app.service.showErrorDetail=false
+    #Service令牌Header Key，默认值：Authorization
+    #app.service.token.header=Authorization
+    #Service令牌密钥
+    app.service.token.secret=6711b7cbfe8551fefc60e7d9bd44da4f2
+    #是否启用用户登录的验证码校验，默认值：true
+    #app.module.client.loginCaptchaCheckingEnable=true
+    #远程服务地址
+    #app.remote.service.url=
+    #远程服务授权Header Key，默认值：X-API-Key
+    #app.remote.service.authHeader=X-API-Key
+    #远程服务授权令牌
+    #app.remote.service.authToken=
+    ########################################################
+    ###database 配置
+    ########################################################
+    spring.datasource.url=jdbc:mysql://$CI_PROJECT_PATH_SLUG-mariadb:3306/moon?useUnicode=true&characterEncoding=utf-8&connectTimeout=30000&socketTimeout=30000&serverTimezone=GMT%2B8&useOldAliasMetadataBehavior=true&createDatabaseIfNotExist=true
+    spring.datasource.username=root
+    spring.datasource.password=123456
+    #liquibase
+    spring.liquibase.enabled=true
+    spring.liquibase.change-log=classpath:db/changelog/db.changelog-master.xml
+    #mybatis
+    mybatis.config-location=classpath:mybatis-config.xml
+    mybatis-plus.typeEnumsPackage=com.github.lastsunday.moon.data.enums
+    ########################################################
+    ###redis 配置
+    ########################################################
+    spring.redis.database=4
+    spring.redis.host=$CI_PROJECT_PATH_SLUG-redis
+    spring.redis.port=6379
+    spring.redis.password=
+    spring.user-redis.database=5
+    spring.user-redis.host=$CI_PROJECT_PATH_SLUG-redis
+    spring.user-redis.port=6379
+    spring.user-redis.password=
+    spring.lock-redis.database=6
+    spring.lock-redis.host=$CI_PROJECT_PATH_SLUG-redis
+    spring.lock-redis.port=6379
+    spring.lock-redis.password=
+---

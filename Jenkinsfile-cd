@@ -1,0 +1,199 @@
+// -----jenkins parameter start-----
+def dockerTag = env.dockerTag
+// String Parameter or Git Parameter
+def branchOrTagForRoot = env.branchOrTagForRoot
+// String Parameter or Git Parameter
+def gitRepositoryUrlForRoot = env.gitRepositoryUrlForRoot
+// String Parameter or Git Parameter
+def branchOrTagForService = env.branchOrTagForService
+// String Parameter or Git Parameter
+def gitRepositoryUrlForService = env.gitRepositoryUrlForService
+// String Parameter or Git Parameter
+def branchOrTagForDeploy = env.branchOrTagForDeploy
+// String Parameter or Git Parameter
+def gitRepositoryUrlForDeploy = env.gitRepositoryUrlForDeploy
+// String Parameter or Credential
+def gitRepositoryCredentialsId = env.gitRepositoryCredentialsId
+// String Parameter
+def profile = env.profile
+// Multi-line String Parameter
+def buildManagerEmail = env.buildManagerEmail
+// String Parameter
+def sshRemoteHost = env.sshRemoteHost
+// String Parameter or Credential
+def remoteCredentialsId = env.remoteCredentialsId
+// String parameter
+def additionLabel = env.additionLabel
+// String parameter or Multi-line String Parameter
+def additionEmailBody = env.additionEmailBody
+// -----jenkins parameter end-----
+
+def domain = 'com.github.lastsunday'
+def productName = 'moon'
+def productModule = ''
+def projectName = ''
+def artifactName = productName
+if(productModule != ''){
+	artifactName += '-' + productModule
+}
+if(projectName != ''){
+	artifactName += '-' + projectName
+}
+def productAndProjectName = productName
+if(projectName != ''){
+	productAndProjectName = productAndProjectName + '-' + projectName
+}
+def now = new Date()
+def nowDateTimeString = now.format("yyyy-MM-dd HH:mm:ss")
+def emailSubject = null;
+def emailBody = null;
+def remote = null;
+
+pipeline {
+	agent {
+		label 'git && ssh' + additionLabel
+	}
+	options {
+		parallelsAlwaysFailFast() 
+	}
+	stages{
+		stage('clean workspace') {
+			steps {
+				cleanWs(
+					disableDeferredWipeout: true,
+					deleteDirs: true
+				)
+			}
+		}
+		stage("fetch info from upstream"){
+			steps{
+				script{
+					currentBuild.upstreamBuilds?.each{ b ->
+						def buildVariables = b.getBuildVariables()
+						if(buildVariables['dockerTagStandalone'] != null){
+							dockerTag = buildVariables['dockerTagStandalone']
+							echo "dockerTag = ${dockerTag}"
+						}
+					}
+				}
+			}
+		}
+		stage('checkout'){
+			parallel{
+				stage('checkout root'){
+					steps {
+						checkout([$class: 'GitSCM', branches: [[name: branchOrTagForRoot]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'root']], submoduleCfg: [], userRemoteConfigs: [[credentialsId: gitRepositoryCredentialsId, url: gitRepositoryUrlForRoot]]])
+					}
+				}
+				stage('checkout service'){
+					steps {
+						checkout([$class: 'GitSCM', branches: [[name: branchOrTagForService]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'service']], submoduleCfg: [], userRemoteConfigs: [[credentialsId: gitRepositoryCredentialsId, url: gitRepositoryUrlForService]]])
+					}
+				}
+				stage('checkout deploy'){
+					steps {
+						checkout([$class: 'GitSCM', branches: [[name: branchOrTagForDeploy]], doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'RelativeTargetDirectory', relativeTargetDir: 'deploy']], submoduleCfg: [], userRemoteConfigs: [[credentialsId: gitRepositoryCredentialsId, url: gitRepositoryUrlForDeploy]]])
+					}
+				}
+			}
+		}
+		stage('config remote ssh') {
+			steps {
+				script{
+					withCredentials([usernamePassword(credentialsId: remoteCredentialsId, passwordVariable: 'password', usernameVariable: 'username')]) {
+						remote = [ : ]
+						remote.name = username
+						remote.host = sshRemoteHost
+						remote.user = username
+						remote.password = password
+						remote.allowAnyHosts = true
+					}
+				}
+			}
+		}
+		stage('remote ssh try to stop docker container and clean docker image') {
+			steps {
+				script{
+					try{
+						sshCommand remote: remote, command: 'cd /usr/local/docker/'+artifactName+'/ && docker-compose down'
+						def dockerRepository = dockerTag.split(':')[0]
+						sshCommand remote: remote, command: "docker rmi `docker images | grep "+dockerRepository+" | grep dev | awk '{print \$3}'`"
+					}catch(e){
+						//skip
+					}
+				}
+			}
+		}
+		stage('remote ssh copy file') {
+			steps {
+				sshCommand remote: remote, command: 'rm -rf /usr/local/docker/'+artifactName+'/'
+				sshCommand remote: remote, command: 'mkdir /usr/local/docker/'+artifactName+'/'
+				sshPut remote: remote, from: 'deploy/'+profile+'/', into: '/usr/local/docker/'+artifactName+'/'
+				sshCommand remote: remote, command: 'mv /usr/local/docker/'+artifactName+'/'+profile+'/* /usr/local/docker/'+artifactName+'/'
+				sshCommand remote: remote, command: 'mv /usr/local/docker/'+artifactName+'/'+profile+'/.[!.]* /usr/local/docker/'+artifactName+'/'
+				sshCommand remote: remote, command: 'rm -rf /usr/local/docker/'+artifactName+'/'+profile+'/'
+				sshPut remote: remote, from: 'service/core/src/test/resources/db/changelog/db.changelog-test-data.xml', into: '/usr/local/docker/'+artifactName+'/conf/db/changelog/db.changelog-test-data.xml'
+			}
+		}
+		stage('remote ssh deploy') {
+			steps {
+				sshCommand remote: remote, command: 'cd /usr/local/docker/'+artifactName+'/ && sed -i \'s#${DOCKER_IMAGE}#'+dockerTag+'#g\' docker-compose.yml'
+				sshCommand remote: remote, command: 'cd /usr/local/docker/'+artifactName+'/ && docker pull '+dockerTag+' && docker-compose up -d'
+			}
+		}
+		stage('gen email content'){
+			steps {
+				script{
+					emailSubject = """Congratulations,depoly ${artifactName}[${dockerTag}] to ${sshRemoteHost} success."""
+					emailBody = """
+<html>
+	<head></head>
+	<body>
+		<h2>Congratulations,depoly ${artifactName}[${dockerTag}] to ${sshRemoteHost} success.</h2>
+		<h3>Build Info</h3>
+		<ul>
+			<li>Build Datetime: ${nowDateTimeString}</li>
+			<li>Build Number: <a href="${BUILD_URL}">${env.BUILD_NUMBER}</a></li>
+			<li>Node Name: ${NODE_NAME}</li>
+		</ul>
+	</body>
+</html>
+                    """
+					emailBody+=additionEmailBody
+				}
+			}
+		}
+	}
+	post { 
+		success{
+			emailext attachLog: true, body: emailBody, compressLog: true, subject: emailSubject, to: buildManagerEmail
+		}
+		unsuccessful{
+			script{
+				emailSubject = """Warning,depoly ${artifactName}[${dockerTag}] to ${sshRemoteHost} failure!"""
+				emailBody = """
+<html>
+	<head>
+		<style>
+			.title{
+				color:red;
+			}
+		</style>
+	</head>
+	<body>
+		<h2 class="title">Warning,depoly ${artifactName}[${dockerTag}] to ${sshRemoteHost} failure!</h2>
+		<h3>Build Info</h3>
+		<ul>
+			<li>Build Datetime: ${nowDateTimeString}</li>
+			<li>Build Number: <a href="${BUILD_URL}">${env.BUILD_NUMBER}</a></li>
+			<li>Node Name: ${NODE_NAME}</li>
+		</ul>
+	</body>
+</html>
+                    """
+				emailBody+=additionEmailBody
+				emailext attachLog: true, body: emailBody, compressLog: true, subject: emailSubject, to: buildManagerEmail
+			}
+		}
+	}
+}

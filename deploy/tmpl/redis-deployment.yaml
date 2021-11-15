@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $CI_PROJECT_PATH_SLUG-redis
+  labels:
+    app: $CI_PROJECT_PATH_SLUG-redis
+  annotations:
+    app.gitlab.com/app: $CI_PROJECT_PATH_SLUG-redis
+    app.gitlab.com/env: $CI_ENVIRONMENT_SLUG-redis
+spec:
+  containers:
+  - name: redis
+    image: redis:6.2.5-alpine3.14
+    command:
+      - redis-server
+      - "/redis-master/redis.conf"
+    env:
+    - name: MASTER
+      value: "true"
+    volumeMounts:
+    - mountPath: /redis-master-data
+      name: data
+    - mountPath: /redis-master
+      name: config
+  volumes:
+    - name: data
+      emptyDir: {}
+    - name: config
+      configMap:
+        name: $CI_PROJECT_PATH_SLUG-redis-config
+        items:
+        - key: redis-config
+          path: redis.conf
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $CI_PROJECT_PATH_SLUG-redis-config
+data:
+  redis-config: ""
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations: {}
+  labels:
+    app: $CI_PROJECT_PATH_SLUG-redis
+  name:  $CI_PROJECT_PATH_SLUG-redis
+  annotations:
+    app.gitlab.com/app: $CI_PROJECT_PATH_SLUG-redis
+    app.gitlab.com/env: $CI_ENVIRONMENT_SLUG-redis
+spec:
+  ports:
+    - name: ''
+      port: 6379
+      protocol: TCP
+      targetPort: 6379
+  selector:
+    app: $CI_PROJECT_PATH_SLUG-redis
+---

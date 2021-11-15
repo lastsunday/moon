@@ -1,0 +1,31 @@
+version: "3"
+services:
+  db:
+    env_file: .env
+    image: mariadb:10.6.4
+    volumes:
+      - ./mariadb/data:/var/lib/mysql
+      - ./mariadb/conf/mysql_custom.cnf:/etc/mysql/conf.d/mysql_custom.cnf
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=123456
+    ports:
+      - "4437:3306"
+  redis:
+    env_file: .env
+    image: redis:6.2.5
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+  service:
+    env_file: .env
+    image: lastsunday/moon-standalone:${APP_VERSION}
+    volumes:
+      - ./conf:/usr/local/app/conf
+      - ./log:/usr/local/app/workspace/log
+    restart: unless-stopped
+    ports:
+      - "9211:9211"
+    depends_on: 
+      - db
+      - redis

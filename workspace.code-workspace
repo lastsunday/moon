@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "..\\moon-client-admin"
+		},
+		{
+			"path": "..\\moon-client-app"
+		},
+		{
+			"path": "..\\moon-client-mini-app"
+		},
+		{
+			"path": "..\\moon-service"
+		}
+	]
+}
