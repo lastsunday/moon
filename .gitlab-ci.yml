@@ -1,3 +1,44 @@
+build:
+  # Use the official docker image.
+  image: 
+    # gcr.io/kaniko-project/executor:debug
+    name: aiotceo/kaniko-debug:769
+    entrypoint: [""]
+  stage: build
+  before_script:
+    - mkdir -p /kaniko/.docker
+    - echo "{\"auths\":{\"$CI_REGISTRY\":{\"auth\":\"$(echo -n ${CI_REGISTRY_USER}:${CI_REGISTRY_PASSWORD} | base64)\"}}}" > /kaniko/.docker/config.json
+    - echo "$CA_CERTIFICATE" >> /kaniko/ssl/certs/additional-ca-cert-bundle.crt
+  script:
+    - mkdir build-standard/
+    - mkdir build-standard/app/
+    - mkdir build-standard/app/app/
+    - mkdir build-standard/app/admin/
+    - mkdir build-standard/app/mini-app/
+    - cp service/service-core.jar build-standard/app
+    - cp -r client-app/* build-standard/app/app/
+    - cp -r client-admin/* build-standard/app/admin/
+    - cp -r client-mini-app-h5/* build-standard/app/mini-app/
+    - cp scripts/docker/standard/* build-standard
+    - /kaniko/executor --context $CI_PROJECT_DIR/build-standard --dockerfile $CI_PROJECT_DIR/build-standard/Dockerfile --destination $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
+  needs:
+    - project: lastsunday/moon-service
+      job: build
+      ref: dev
+      artifacts: true
+    - project: lastsunday/moon-client-admin
+      job: build
+      ref: dev
+      artifacts: true
+    - project: lastsunday/moon-client-app
+      job: build
+      ref: dev
+      artifacts: true
+    - project: lastsunday/moon-client-app-uniapp
+      job: build-h5
+      ref: dev
+      artifacts: true
+
 deploy_development:
   stage: deploy
   image: lwolf/kubectl_deployer:1.18.3
