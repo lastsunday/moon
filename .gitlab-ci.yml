@@ -24,19 +24,19 @@ build:
   needs:
     - project: lastsunday/moon-service
       job: build
-      ref: dev
+      ref: main
       artifacts: true
     - project: lastsunday/moon-client-admin
       job: build
-      ref: dev
+      ref: main
       artifacts: true
     - project: lastsunday/moon-client-app
       job: build
-      ref: dev
+      ref: main
       artifacts: true
     - project: lastsunday/moon-client-app-uniapp
       job: build-h5
-      ref: dev
+      ref: main
       artifacts: true
 
 deploy_development:
